@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Websocket With SpringBoot</title>
+    <style>
+        body {
+            margin-left: auto;
+            margin-right: auto;
+            width: 40%;
+        }
+
+        #app {
+            background-color: #cccccc;
+            display: flex;
+            flex-direction: column;
+            padding: 10px;
+        }
+
+        label {
+            display: block;
+            margin: 10px 0px;
+        }
+
+        input[type=text],input[type=file], button, select {
+            padding: 10px;
+            margin: 10px 5px;
+        }
+
+        #messages {
+            padding: 20px;
+        }
+
+        #message__form {
+            padding: 10px;
+        }
+
+        #messages p {
+            margin: 10px 0px;
+            padding: 10px;
+            border: 1px solid #ccc;
+        }
+
+        #messages p strong {
+            color: blue;
+            margin-right: 10px;
+        }
+
+        .others__message {
+            text-align: left;
+            padding: 10px;
+        }
+
+        .own__message {
+            text-align: right;
+            padding: 10px;
+        }
+
+    </style>
+</head>
+<body>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+
+    <div id="app">
+        <h2>{{ title }}</h2>
+        <div id="message__form">
+            <form @submit.prevent="sendMessage">
+                <fieldset>
+                    <legend>Send Message (or Picture) to Person (or Others)</legend>
+
+                    <select disabled>
+                        <option>ALL</option>
+                    </select>
+                    <div style="display: flex; gap: 5px;">
+                        <input type="text" id="name" placeholder="Enter message" v-model="message"/>
+                        <p>/</p>
+                        <input type="file" disabled/>
+
+                    </div>
+                    <button id="send">Send</button>
+                </fieldset>
+            </form>
+        </div>
+
+        <div id="messages">
+            <p class="others__message">
+                <strong>User1</strong>
+                Hello World
+            </p>
+            <p class="own__message">
+                <strong>Me</strong>
+                Hello
+            </p>
+            <pre>{{ messages }}</pre>
+        </div>
+    </div>
+
+    <script>
+        const {createApp, ref, onMounted } = Vue
+        const apiHost = 'ws://localhost:8080/text'
+        createApp({
+            setup() {
+                const title = ref('Websocket Client!')
+                const messages = ref([])
+                const socket = ref(null)
+                const message = ref(null)
+
+                const sendMessage = () => {
+                    socket.value.send(message.value)
+                    message.value = null
+                }
+
+                onMounted(() => {
+                    // Create WebSocket connection.
+                    socket.value = new WebSocket(apiHost);
+
+                    console.log(socket.value)
+
+                    // Connection opened
+                    socket.value.addEventListener("open", (event) => {
+                        socket.value.send("JS Client Connected");
+                    });
+
+                    // Listen for messages
+                    socket.value.addEventListener("message", (event) => {
+                        let data = JSON.parse(event.data)
+                        console.log("Message from server ", data);
+                        messages.value.push(data)
+                    });
+                })
+                return {
+                    title, messages, sendMessage, message
+                }
+            }
+        }).mount('#app')
+    </script>
+</body>
+</html>
