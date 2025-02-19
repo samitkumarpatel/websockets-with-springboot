@@ -62,6 +62,8 @@
 <body>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
 
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
     <div id="app">
         <h2>{{ title }}</h2>
         <div id="message__form">
@@ -69,9 +71,11 @@
                 <fieldset>
                     <legend>Send Message (or Picture) to Person (or Others)</legend>
 
-                    <select disabled>
+                    <select v-model="messageTo">
                         <option>ALL</option>
+                        <option v-for="user in users">{{ user.name }}</option>
                     </select>
+
                     <div style="display: flex; gap: 5px;">
                         <input type="text" id="name" placeholder="Enter message" v-model="message"/>
                         <p>/</p>
@@ -93,38 +97,65 @@
 
     <script>
         const {createApp, ref, onMounted } = Vue
-        const apiHost = ''
+        const apiHost = 'http://localhost:8080'
         createApp({
             setup() {
                 const title = ref('Websocket Client!')
                 const messages = ref([])
-                const socket = ref(null)
+                const stompClient = ref(null)
                 const message = ref(null)
+                const messageTo = ref(null)
+
+                const users = ref([])
 
                 const sendMessage = () => {
-                    socket.value.send(message.value)
+
+                    if(messageTo.value === 'ALL') {
+                        stompClient.value.send(`/app/public`, {}, JSON.stringify({from: 'SubmitForm', to: 'ALL', message: message.value}))
+                    } else {
+                        stompClient.value.send(`/app/private`, {}, JSON.stringify({message : message.value, to: messageTo.value}))
+                    }
+
+                    messageTo.value = null
                     message.value = null
                 }
 
+                const allUsers = () => {
+                    fetch(`${apiHost}/users`)
+                        .then(response => response.json())
+                        .then(data => users.value = data)
+                }
+
                 onMounted(() => {
-                    // Create WebSocket connection.
-                    socket.value = new WebSocket(`ws://localhost:8080/text`,[]);
+                    const socket = new SockJS(`${apiHost}/stomp-endpoint`);
+                    stompClient.value = Stomp.over(socket)
 
+                    stompClient.value.connect({}, (frame) => {
+                        console.log('Connected: ' + frame);
 
-                    // Connection opened
-                    socket.value.addEventListener("open", (event) => {
-                        socket.value.send("JS Client Connected");
-                    });
+                        stompClient.value.subscribe(`/user/queue/private`, (msg) => {
+                            console.log('>>> Received Private Message: ' + msg.body);
+                            let msgBody = JSON.parse(msg.body)
+                            messages.value.push(msgBody)
+                        },{});
 
-                    // Listen for messages
-                    socket.value.addEventListener("message", (event) => {
-                        let data = JSON.parse(event.data)
-                        console.log("Message from server ", data);
-                        messages.value.push(data)
+                        stompClient.value.subscribe('/topic/public', (msg) => {
+                            console.log('>>> Received Public Message', msg.body)
+                            let msgBody = JSON.parse(msg.body)
+                            messages.value.push(msgBody)
+                        },{});
+
+                        stompClient.value.send(`/app/public`, {}, JSON.stringify({from: 'JsClient', to: 'ALL', message :'Hello Everyone'}))
+                        //stompClient.value.send(`/app/private`, {}, JSON.stringify({message :`Private Message`}))
+
+                        allUsers()
+
+                    }, (error) => {
+                        console.error('stompClient error: ', error);
                     });
                 })
                 return {
-                    title, messages, sendMessage, message
+                    title, messages, sendMessage, message, users, messageTo
                 }
             }
         }).mount('#app')

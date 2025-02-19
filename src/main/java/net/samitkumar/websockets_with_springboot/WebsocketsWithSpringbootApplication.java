@@ -1,31 +1,38 @@
 package net.samitkumar.websockets_with_springboot;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.security.auth.UserPrincipal;
 import lombok.RequiredArgsConstructor;
-import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.event.EventListener;
 import org.springframework.http.server.ServerHttpRequest;
-import org.springframework.http.server.ServerHttpResponse;
-import org.springframework.stereotype.Component;
-import org.springframework.web.socket.CloseStatus;
-import org.springframework.web.socket.TextMessage;
+import org.springframework.messaging.handler.annotation.Headers;
+import org.springframework.messaging.handler.annotation.MessageMapping;
+import org.springframework.messaging.handler.annotation.Payload;
+import org.springframework.messaging.handler.annotation.SendTo;
+import org.springframework.messaging.simp.SimpMessageSendingOperations;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.messaging.simp.config.MessageBrokerRegistry;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.socket.WebSocketHandler;
-import org.springframework.web.socket.WebSocketSession;
-import org.springframework.web.socket.config.annotation.EnableWebSocket;
-import org.springframework.web.socket.config.annotation.WebSocketConfigurer;
-import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry;
-import org.springframework.web.socket.handler.TextWebSocketHandler;
-import org.springframework.web.socket.server.HandshakeInterceptor;
+import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
+import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
+import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
+import org.springframework.web.socket.messaging.SessionConnectEvent;
+import org.springframework.web.socket.messaging.SessionDisconnectEvent;
 import org.springframework.web.socket.server.support.DefaultHandshakeHandler;
 
 import java.security.Principal;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 @SpringBootApplication
@@ -37,108 +44,97 @@ public class WebsocketsWithSpringbootApplication {
 	}
 
 	@Bean
-	Map<String, WebSocketSession> sessions() {
+	Map<String, String> users() {
 		return new HashMap<>();
 	}
 
+	@EventListener
+	public void onSessionConnect(SessionConnectEvent event) {
+		log.info("SessionConnectEvent: {}", event);
+		var uuid = Objects.requireNonNull(event.getUser()).getName();
+		var sessionId = (String) event.getMessage().getHeaders().get("simpSessionId");
+		users().put(uuid, sessionId);
+	}
+
+	@EventListener
+	public void onSessionDisconnect(SessionDisconnectEvent event) {
+		log.info("SessionDisconnectEvent: {}", event);
+		var uuid = Objects.requireNonNull(event.getUser()).getName();
+		users().remove(uuid);
+	}
+
 }
 
-record UserMessage(String id, String message) {}
-record Message(String from, String to, String message) {}
+record UserMessage(String from, String to, String message) {}
 
-// 1.) Need a Handler (WebSocketHandler, TextWebSocketHandler or BinaryWebSocketHandler for WebSocket session)
-@Slf4j
-@Component
-@RequiredArgsConstructor
-class TextMessageHandler extends TextWebSocketHandler {
-	final Map<String, WebSocketSession> sessions;
-	final ObjectMapper objectMapper;
 
-	@Override
-	@SneakyThrows
-	protected void handleTextMessage(WebSocketSession session, TextMessage message) {
-		log.info("Received message: SESSION:{} , MESSAGE: {}", session, message.getPayload());
-		var userMessage = new UserMessage(session.getId(), message.getPayload());
-		broadcast(session, userMessage);
-
-	}
-
-	@Override
-	@SneakyThrows
-	public void afterConnectionEstablished(WebSocketSession session) {
-
-//		You can get the customise principal object from the session object like below
-//		System.out.println(session.getPrincipal());
-
-		log.info("Session established: {}", session);
-		sessions.put(session.getId(), session);
-		broadcast(session, new UserMessage("SYSTEM", "User %s Connected".formatted(session.getId())));
-	}
-
-	@Override
-	@SneakyThrows
-	public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
-		log.info("Session closed: {}", session);
-		sessions.remove(session.getId());
-		broadcast(session, new UserMessage("SYSTEM", "User %s Disconnected".formatted(session.getId())));
-	}
-
-	@SneakyThrows
-	void broadcast(WebSocketSession session, UserMessage message) {
-		var outgoingMessage = objectMapper.writeValueAsString(
-				new Message(message.id(), "ALL", message.message())
-		);
-		//send to all the users
-		sessions.values().forEach(s -> {
-			try {
-				//if (session == s) return;
-				s.sendMessage(new TextMessage(outgoingMessage));
-			} catch (Exception e) {
-				log.error("Error sending message to session: {}", s, e);
-			}
-		});
-	}
-}
-
-// 2.) WebSocketConfiguration to register WebSocketHandler
+// 1.) Enable WebSocketMessageBroker
 @Configuration
-@EnableWebSocket
+@EnableWebSocketMessageBroker
 @RequiredArgsConstructor
-class WebSocketConfiguration implements WebSocketConfigurer {
-	final TextMessageHandler textMessageHandler;
+@Slf4j
+class WebSocketConfiguration implements WebSocketMessageBrokerConfigurer {
 
 	@Override
-	public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
-		registry
-				.addHandler(textMessageHandler, "/text")
-				.setAllowedOriginPatterns("*")
-				.addInterceptors(new CustomHandshakeInterceptor())
+	public void registerStompEndpoints(StompEndpointRegistry registry) {
+		registry.addEndpoint("/stomp-endpoint")
 				.setHandshakeHandler(new DefaultHandshakeHandler() {
 					@Override
 					protected Principal determineUser(ServerHttpRequest request, WebSocketHandler wsHandler, Map<String, Object> attributes) {
 						var uuid = UUID.randomUUID().toString();
 						attributes.put("UUID", uuid);
+						log.info("UUID: {}", uuid);
 						return new UserPrincipal(uuid);
 					}
 				})
-				//.withSockJS()
-		;
+				.setAllowedOriginPatterns("*")
+				.withSockJS()
+				.setHeartbeatTime(60_000);
+	}
+
+	@Override
+	public void configureMessageBroker(MessageBrokerRegistry registry) {
+		registry.enableSimpleBroker("/queue/", "/topic/");
+		// STOMP messages whose destination header begins with /app are routed to @MessageMapping methods in @Controller classes
+		registry.setApplicationDestinationPrefixes("/app");
+		registry.setUserDestinationPrefix("/user");
 	}
 }
 
-// 3.) Custom HandshakeInterceptor to add any useful attributes to WebSocketSession
+// 2.) Controller to handle WebSocket messages
+@Controller
 @Slf4j
-class CustomHandshakeInterceptor implements HandshakeInterceptor {
+@RequiredArgsConstructor
+class WebSocketController {
 
-	@Override
-	public boolean beforeHandshake(ServerHttpRequest request, ServerHttpResponse response, WebSocketHandler wsHandler, Map<String, Object> attributes) {
-		log.info("Handshake[Before]: PRINCIPAL {}, ATTRIBUTES {}", request.getPrincipal(), attributes);
-		return true;
+	final Map<String, String> users;
+	final SimpMessagingTemplate messagingTemplate;
+	final SimpMessageSendingOperations messagingSendingTemplate;
 
+	@MessageMapping("/private")
+	public void sendMessageToUser(@Payload UserMessage userMessage, @Headers Map<Object, Object> headers, Principal principal) {
+		var sendTo = users.get(userMessage.to());
+		log.info("sendMessageToUser sendTo: {} userMessage: {} Headers: {}",sendTo, userMessage, headers);
+
+		//messagingTemplate.convertAndSendToUser(sendTo, "/queue/private", userMessage.message());
+		messagingSendingTemplate.convertAndSendToUser( sendTo, "/queue/private", userMessage.message());
 	}
 
-	@Override
-	public void afterHandshake(ServerHttpRequest request, ServerHttpResponse response, WebSocketHandler wsHandler, Exception exception) {
-		log.info("Handshake[After]: PRINCIPAL {}, ATTRIBUTES {}", request.getPrincipal(), request.getAttributes());
+	@MessageMapping("/public")
+	@SendTo("/topic/public")
+	public UserMessage sendGreetingToUser(@Payload UserMessage message, @Headers Map<Object, Object> headers, Principal principal) throws InterruptedException {
+		log.info("Public Message Principle {} Headers: {}, {}", principal, headers, message);
+		return message;
+	}
+
+	@GetMapping("/users")
+	@CrossOrigin(originPatterns = "*")
+	@ResponseBody
+	public List<Map<String, String>> allUsers() {
+		return users
+				.entrySet()
+				.stream()
+				.map(entry -> Map.of("name", entry.getKey()))
+				.toList();
 	}
 }
