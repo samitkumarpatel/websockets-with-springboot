@@ -66,6 +66,10 @@ class TextMessageHandler extends TextWebSocketHandler {
 	@Override
 	@SneakyThrows
 	public void afterConnectionEstablished(WebSocketSession session) {
+
+//		You can get the customise principal object from the session object like below
+//		System.out.println(session.getPrincipal());
+
 		log.info("Session established: {}", session);
 		sessions.put(session.getId(), session);
 		broadcast(session, new UserMessage("SYSTEM", "User %s Connected".formatted(session.getId())));

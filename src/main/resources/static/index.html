@@ -84,21 +84,16 @@
         </div>
 
         <div id="messages">
-            <p class="others__message">
-                <strong>User1</strong>
-                Hello World
+            <p class="others__message" v-for="msg in messages">
+                <strong>{{msg.from}}</strong>
+                {{msg.message}}
             </p>
-            <p class="own__message">
-                <strong>Me</strong>
-                Hello
-            </p>
-            <pre>{{ messages }}</pre>
         </div>
     </div>
 
     <script>
         const {createApp, ref, onMounted } = Vue
-        const apiHost = 'ws://localhost:8080/text'
+        const apiHost = ''
         createApp({
             setup() {
                 const title = ref('Websocket Client!')
@@ -113,9 +108,8 @@
 
                 onMounted(() => {
                     // Create WebSocket connection.
-                    socket.value = new WebSocket(apiHost);
+                    socket.value = new WebSocket(`ws://localhost:8080/text`,[]);
 
-                    console.log(socket.value)
 
                     // Connection opened
                     socket.value.addEventListener("open", (event) => {
