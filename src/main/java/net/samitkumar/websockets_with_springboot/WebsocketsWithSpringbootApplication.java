@@ -17,6 +17,7 @@ import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.messaging.handler.annotation.SendTo;
 import org.springframework.messaging.simp.SimpMessageSendingOperations;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
+import org.springframework.messaging.simp.annotation.SendToUser;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -120,12 +121,14 @@ class WebSocketController {
 	final SimpMessageSendingOperations messagingSendingTemplate;
 
 	@MessageMapping("/private")
-	public void sendMessageToUser(@Payload UserMessage userMessage, @Headers Map<Object, Object> headers, Principal principal) {
+	@SendToUser("/queue/private")
+	public UserMessage sendMessageToUser(@Payload UserMessage userMessage, @Headers Map<Object, Object> headers, Principal principal) {
 		userMessage.setFrom(principal.getName());
 		log.info("sendMessageToUser sendTo: {} userMessage: {} Headers: {}", userMessage.getTo(), userMessage, headers);
 
 		messagingTemplate.convertAndSendToUser(userMessage.getTo(), "/queue/private", userMessage);
 		//messagingSendingTemplate.convertAndSendToUser( sendTo, "/queue/private", userMessage.message());
+		return userMessage;
 	}
 
 	@MessageMapping("/public")

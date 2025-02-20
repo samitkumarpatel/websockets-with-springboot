@@ -56,6 +56,11 @@
             text-align: right;
             padding: 10px;
         }
+        .error {
+            color: red;
+            padding: 10px;
+            border: 1px solid red;
+        }
 
     </style>
 </head>
@@ -66,7 +71,12 @@
     <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
     <div id="app">
         <h3>{{ title }}</h3>
-        <p>Connected as: <strong>{{ userName }}</strong></p>
+        <p>Welcome User, You are Connected as: <strong>{{ userName }}</strong></p>
+        <div class="error" v-if="error">
+            <p>{{ error }}</p>
+            <p>Refresh the page</p>
+        </div>
+
         <div id="message__form">
             <form @submit.prevent="sendMessage">
                 <fieldset>
@@ -74,7 +84,7 @@
 
                     <select v-model="messageTo">
                         <option>ALL</option>
-                        <option v-for="user in users">{{ user.name }}</option>
+                        <option v-for="user in users" :disabled="userName === user.name">{{ userName === user.name ? '(You) '+user.name : user.name }}</option>
                     </select>
 
                     <div style="display: flex; gap: 5px;">
@@ -90,7 +100,7 @@
 
         <div id="messages">
             <p :class="userName === msg.from ? 'own__message' : 'others__message' " v-for="msg in messages">
-                <strong>{{userName === msg.from ? 'Me' : msg.from}}</strong>
+                <strong>{{userName === msg.from ? 'Me ('+userName+')' : msg.from}}</strong>
                 {{msg.message}}
             </p>
         </div>
@@ -108,6 +118,7 @@
                 const messageTo = ref('ALL')
                 const userName = ref(null)
                 const users = ref([])
+                const error = ref(null)
 
                 const sendMessage = () => {
 
@@ -133,6 +144,7 @@
                     stompClient.value.connect({}, (frame) => {
                         console.log(`stompClient.connected ${frame.headers['user-name']}`);
                         userName.value = frame.headers['user-name'] || 'Unknown'
+
                         stompClient.value.subscribe(`/user/queue/private`, (msg) => {
                             console.log('>>> Received Private Message: ' + msg.body);
                             let msgBody = JSON.parse(msg.body)
@@ -143,6 +155,7 @@
                             console.log('>>> Received Public Message', msg.body)
                             let msgBody = JSON.parse(msg.body)
                             messages.value.push(msgBody)
+
                             if (msgBody.from === 'SYSTEM') {
                                 allUsers()
                             }
@@ -153,12 +166,13 @@
 
                         allUsers()
 
-                    }, (error) => {
-                        console.error('stompClient error: ', error);
+                    }, (e) => {
+                        console.error('stompClient error: ', e);
+                        error.value = e
                     });
                 })
                 return {
-                    title, messages, sendMessage, message, users, messageTo, userName
+                    title, messages, sendMessage, message, users, messageTo, userName, error
                 }
             }
         }).mount('#app')
