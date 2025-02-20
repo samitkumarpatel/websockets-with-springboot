@@ -1,6 +1,8 @@
 package net.samitkumar.websockets_with_springboot;
 
 import com.sun.security.auth.UserPrincipal;
+import lombok.Builder;
+import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.SpringApplication;
@@ -65,7 +67,13 @@ public class WebsocketsWithSpringbootApplication {
 
 }
 
-record UserMessage(String from, String to, String message) {}
+@Data
+@Builder(toBuilder = true)
+class UserMessage{
+	String from;
+	String to;
+	String message;
+}
 
 
 // 1.) Enable WebSocketMessageBroker
@@ -113,11 +121,11 @@ class WebSocketController {
 
 	@MessageMapping("/private")
 	public void sendMessageToUser(@Payload UserMessage userMessage, @Headers Map<Object, Object> headers, Principal principal) {
-		var sendTo = users.get(userMessage.to());
-		log.info("sendMessageToUser sendTo: {} userMessage: {} Headers: {}",sendTo, userMessage, headers);
+		userMessage.setFrom(principal.getName());
+		log.info("sendMessageToUser sendTo: {} userMessage: {} Headers: {}", userMessage.getTo(), userMessage, headers);
 
-		//messagingTemplate.convertAndSendToUser(sendTo, "/queue/private", userMessage.message());
-		messagingSendingTemplate.convertAndSendToUser( sendTo, "/queue/private", userMessage.message());
+		messagingTemplate.convertAndSendToUser(userMessage.getTo(), "/queue/private", userMessage);
+		//messagingSendingTemplate.convertAndSendToUser( sendTo, "/queue/private", userMessage.message());
 	}
 
 	@MessageMapping("/public")

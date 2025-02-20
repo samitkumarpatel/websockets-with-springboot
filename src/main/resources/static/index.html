@@ -65,7 +65,8 @@
     <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
     <div id="app">
-        <h2>{{ title }}</h2>
+        <h3>{{ title }}</h3>
+        <p>Connected as: <strong>{{ userName }}</strong></p>
         <div id="message__form">
             <form @submit.prevent="sendMessage">
                 <fieldset>
@@ -88,8 +89,8 @@
         </div>
 
         <div id="messages">
-            <p class="others__message" v-for="msg in messages">
-                <strong>{{msg.from}}</strong>
+            <p :class="userName === msg.from ? 'own__message' : 'others__message' " v-for="msg in messages">
+                <strong>{{userName === msg.from ? 'Me' : msg.from}}</strong>
                 {{msg.message}}
             </p>
         </div>
@@ -100,12 +101,12 @@
         const apiHost = 'http://localhost:8080'
         createApp({
             setup() {
-                const title = ref('Websocket Client!')
+                const title = ref('STOMP Client')
                 const messages = ref([])
                 const stompClient = ref(null)
                 const message = ref(null)
-                const messageTo = ref(null)
-
+                const messageTo = ref('ALL')
+                const userName = ref(null)
                 const users = ref([])
 
                 const sendMessage = () => {
@@ -113,10 +114,9 @@
                     if(messageTo.value === 'ALL') {
                         stompClient.value.send(`/app/public`, {}, JSON.stringify({from: 'SubmitForm', to: 'ALL', message: message.value}))
                     } else {
-                        stompClient.value.send(`/app/private`, {}, JSON.stringify({message : message.value, to: messageTo.value}))
+                        stompClient.value.send(`/app/private`, {}, JSON.stringify({from: '', to: messageTo.value, message: message.value}))
                     }
 
-                    messageTo.value = null
                     message.value = null
                 }
 
@@ -127,12 +127,12 @@
                 }
 
                 onMounted(() => {
-                    const socket = new SockJS(`${apiHost}/stomp-endpoint`);
-                    stompClient.value = Stomp.over(socket)
+                    const sockjs = new SockJS(`${apiHost}/stomp-endpoint`);
+                    stompClient.value = Stomp.over(sockjs)
 
                     stompClient.value.connect({}, (frame) => {
-                        console.log('Connected: ' + frame);
-
+                        console.log(`stompClient.connected ${frame.headers['user-name']}`);
+                        userName.value = frame.headers['user-name'] || 'Unknown'
                         stompClient.value.subscribe(`/user/queue/private`, (msg) => {
                             console.log('>>> Received Private Message: ' + msg.body);
                             let msgBody = JSON.parse(msg.body)
@@ -143,9 +143,12 @@
                             console.log('>>> Received Public Message', msg.body)
                             let msgBody = JSON.parse(msg.body)
                             messages.value.push(msgBody)
+                            if (msgBody.from === 'SYSTEM') {
+                                allUsers()
+                            }
                         },{});
 
-                        stompClient.value.send(`/app/public`, {}, JSON.stringify({from: 'JsClient', to: 'ALL', message :'Hello Everyone'}))
+                        stompClient.value.send(`/app/public`, {}, JSON.stringify({from: 'SYSTEM', to: 'ALL', message :`${userName.value} has Just Joined`}))
                         //stompClient.value.send(`/app/private`, {}, JSON.stringify({message :`Private Message`}))
 
                         allUsers()
@@ -155,7 +158,7 @@
                     });
                 })
                 return {
-                    title, messages, sendMessage, message, users, messageTo
+                    title, messages, sendMessage, message, users, messageTo, userName
                 }
             }
         }).mount('#app')
