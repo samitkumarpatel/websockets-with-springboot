@@ -2,6 +2,7 @@ package net.samitkumar.websockets_with_springboot;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.security.auth.UserPrincipal;
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -12,6 +13,10 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.server.ServerHttpRequest;
 import org.springframework.http.server.ServerHttpResponse;
 import org.springframework.stereotype.Component;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketHandler;
@@ -25,8 +30,10 @@ import org.springframework.web.socket.server.support.DefaultHandshakeHandler;
 
 import java.security.Principal;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 @SpringBootApplication
 @Slf4j
@@ -38,13 +45,27 @@ public class WebsocketsWithSpringbootApplication {
 
 	@Bean
 	Map<String, WebSocketSession> sessions() {
-		return new HashMap<>();
+		return new ConcurrentHashMap<>();
 	}
 
 }
 
 record UserMessage(String id, String message) {}
 record Message(String from, String to, String message) {}
+
+@Controller
+@RequiredArgsConstructor
+class ApplicationController {
+	final Map<String, WebSocketSession> sessions;
+
+	@GetMapping("/users")
+	@CrossOrigin(originPatterns = "*")
+	@ResponseBody
+	public List<Map<String, String>> users() {
+		return sessions.values().stream().map(s -> Map.of("name", s.getId())).toList();
+	}
+
+}
 
 // 1.) Need a Handler (WebSocketHandler, TextWebSocketHandler or BinaryWebSocketHandler for WebSocket session)
 @Slf4j
@@ -57,7 +78,7 @@ class TextMessageHandler extends TextWebSocketHandler {
 	@Override
 	@SneakyThrows
 	protected void handleTextMessage(WebSocketSession session, TextMessage message) {
-		log.info("Received message: SESSION:{} , MESSAGE: {}", session, message.getPayload());
+		log.info("Received message: SESSION:{} , MESSAGE: {}, PRINCIPAL: {}, ATTRIBUTES: {}", session, message.getPayload(), session.getPrincipal(), session.getAttributes());
 		var userMessage = new UserMessage(session.getId(), message.getPayload());
 		broadcast(session, userMessage);
 
@@ -66,11 +87,7 @@ class TextMessageHandler extends TextWebSocketHandler {
 	@Override
 	@SneakyThrows
 	public void afterConnectionEstablished(WebSocketSession session) {
-
-//		You can get the customise principal object from the session object like below
-//		System.out.println(session.getPrincipal());
-
-		log.info("Session established: {}", session);
+		log.info("Session established: session: {}, Principal: {}, attributes: {}", session, session.getPrincipal(), session.getAttributes());
 		sessions.put(session.getId(), session);
 		broadcast(session, new UserMessage("SYSTEM", "User %s Connected".formatted(session.getId())));
 	}
@@ -78,7 +95,7 @@ class TextMessageHandler extends TextWebSocketHandler {
 	@Override
 	@SneakyThrows
 	public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
-		log.info("Session closed: {}", session);
+		log.info("Session closed: session: {}, Principal: {}, attributes: {}", session, session.getPrincipal(), session.getAttributes());
 		sessions.remove(session.getId());
 		broadcast(session, new UserMessage("SYSTEM", "User %s Disconnected".formatted(session.getId())));
 	}
@@ -101,6 +118,7 @@ class TextMessageHandler extends TextWebSocketHandler {
 }
 
 // 2.) WebSocketConfiguration to register WebSocketHandler
+@Slf4j
 @Configuration
 @EnableWebSocket
 @RequiredArgsConstructor
@@ -117,6 +135,7 @@ class WebSocketConfiguration implements WebSocketConfigurer {
 					@Override
 					protected Principal determineUser(ServerHttpRequest request, WebSocketHandler wsHandler, Map<String, Object> attributes) {
 						var uuid = UUID.randomUUID().toString();
+						log.info("UUID: {}", uuid);
 						attributes.put("UUID", uuid);
 						return new UserPrincipal(uuid);
 					}
