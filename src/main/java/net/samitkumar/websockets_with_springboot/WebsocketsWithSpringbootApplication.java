@@ -28,10 +28,7 @@ import org.springframework.web.socket.server.HandshakeInterceptor;
 import org.springframework.web.socket.server.support.DefaultHandshakeHandler;
 
 import java.security.Principal;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 @SpringBootApplication
@@ -156,8 +153,13 @@ class WebSocketConfiguration implements WebSocketConfigurer {
 					@Override
 					protected Principal determineUser(ServerHttpRequest request, WebSocketHandler wsHandler, Map<String, Object> attributes) {
 						var uuid = UUID.randomUUID().toString();
-						log.info("UUID: {}", uuid);
+						log.info("[determineUser] UUID: {}, request.getURI: {}, request.getURI.getQuery: {}, attributes: {}", uuid, request.getURI(), request.getURI().getQuery(), attributes);
 						attributes.put("UUID", uuid);
+						//this is the way we can capture the query parameters from request URI . assume UI send a jwt token in query parameter and you want to extract it and use it in the websocket session as a principal
+						var name = request.getURI().getQuery();
+						if (Objects.nonNull(name) && name.contains("=")) {
+							attributes.put("name", name.split("=")[1]);
+						}
 						return new UserPrincipal(uuid);
 					}
 				})
@@ -166,13 +168,15 @@ class WebSocketConfiguration implements WebSocketConfigurer {
 	}
 }
 
-// 3.) Custom HandshakeInterceptor to add any useful attributes to WebSocketSession
+// 3.) Custom HandshakeInterceptor to modify the handshake request and response
 @Slf4j
 class CustomHandshakeInterceptor implements HandshakeInterceptor {
 
 	@Override
 	public boolean beforeHandshake(ServerHttpRequest request, ServerHttpResponse response, WebSocketHandler wsHandler, Map<String, Object> attributes) {
 		log.info("Handshake[Before]: PRINCIPAL {}, ATTRIBUTES {}", request.getPrincipal(), attributes);
+		//This attribute can be seen in WebSocketSession attributes
+		attributes.put("random", "dummy");
 		return true;
 
 	}
@@ -180,5 +184,6 @@ class CustomHandshakeInterceptor implements HandshakeInterceptor {
 	@Override
 	public void afterHandshake(ServerHttpRequest request, ServerHttpResponse response, WebSocketHandler wsHandler, Exception exception) {
 		log.info("Handshake[After]: PRINCIPAL {}, ATTRIBUTES {}", request.getPrincipal(), request.getAttributes());
+
 	}
 }

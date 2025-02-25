@@ -124,7 +124,7 @@
 
                 onMounted(() => {
                     // Create WebSocket connection.
-                    socket.value = new WebSocket(`ws://localhost:8080/text`,[]);
+                    socket.value = new WebSocket(`ws://localhost:8080/text?name=${crypto.randomUUID()}`,[]);
 
 
                     // Connection opened
