@@ -64,6 +64,7 @@
 
     <div id="app">
         <h2>{{ title }}</h2>
+        <p>Welcome {{me}}</p>
         <div id="message__form">
             <form @submit.prevent="sendMessage">
                 <fieldset>
@@ -71,7 +72,7 @@
 
                     <select v-model="messageTo">
                         <option>ALL</option>
-                        <option v-for="user in users">{{user.name}}</option>
+                        <option v-for="user in users" :disabled="me === user.sessionId">{{me === user.sessionId ? user.sessionId+' (me)' : user.sessionId}}</option>
                     </select>
                     <div style="display: flex; gap: 5px;">
                         <input type="text" id="name" placeholder="Enter message" v-model="message"/>
@@ -85,7 +86,7 @@
         </div>
 
         <div id="messages">
-            <p class="others__message" v-for="msg in messages">
+            <p :class="me === msg.from ? 'own__message' : 'others__message'" v-for="msg in messages">
                 <strong>{{msg.from}}</strong>
                 {{msg.message}}
             </p>
@@ -103,9 +104,11 @@
                 const message = ref(null)
                 const users = ref([])
                 const messageTo = ref('ALL')
+                const me = ref('')
 
                 const sendMessage = () => {
                     socket.value.send(JSON.stringify({
+                        from: me.value,
                         message: message.value,
                         to: messageTo.value
                     }))
@@ -126,7 +129,7 @@
 
                     // Connection opened
                     socket.value.addEventListener("open", (event) => {
-                        socket.value.send("Hello from client!");
+                        //socket.value.send("Hello from client!");
                         fetchUsers()
                     });
 
@@ -134,15 +137,20 @@
                     socket.value.addEventListener("message", (event) => {
                         let data = JSON.parse(event.data)
                         console.log("Message from server ", data);
-                        messages.value.push(data)
 
-                        if(data.form === 'SYSTEM') {
+
+                        if(data.from === 'SYSTEM') {
                             fetchUsers()
+                            messages.value.push(data)
+                        } else if(data.from === data.to) {
+                            me.value = data.from
+                        } else {
+                            messages.value.push(data)
                         }
                     });
                 })
                 return {
-                    title, messages, sendMessage, message, users, messageTo
+                    title, messages, sendMessage, message, users, messageTo, me
                 }
             }
         }).mount('#app')

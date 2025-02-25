@@ -2,7 +2,6 @@ package net.samitkumar.websockets_with_springboot;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.security.auth.UserPrincipal;
-import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -29,9 +28,9 @@ import org.springframework.web.socket.server.HandshakeInterceptor;
 import org.springframework.web.socket.server.support.DefaultHandshakeHandler;
 
 import java.security.Principal;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -50,8 +49,9 @@ public class WebsocketsWithSpringbootApplication {
 
 }
 
-record UserMessage(String id, String message) {}
+record WebsocketIncomingPayload(String sessionId, String uuid, String message) {}
 record Message(String from, String to, String message) {}
+record WebsocketOutgoingPayload(String from, String to, String message) {}
 
 @Controller
 @RequiredArgsConstructor
@@ -62,7 +62,13 @@ class ApplicationController {
 	@CrossOrigin(originPatterns = "*")
 	@ResponseBody
 	public List<Map<String, String>> users() {
-		return sessions.values().stream().map(s -> Map.of("name", s.getId())).toList();
+		return sessions
+				.values()
+				.stream()
+				.map(s -> Map.of(
+						"sessionId", s.getId(),
+						"uuid", "XX"))
+				.toList();
 	}
 
 }
@@ -79,8 +85,20 @@ class TextMessageHandler extends TextWebSocketHandler {
 	@SneakyThrows
 	protected void handleTextMessage(WebSocketSession session, TextMessage message) {
 		log.info("Received message: SESSION:{} , MESSAGE: {}, PRINCIPAL: {}, ATTRIBUTES: {}", session, message.getPayload(), session.getPrincipal(), session.getAttributes());
-		var userMessage = new UserMessage(session.getId(), message.getPayload());
-		broadcast(session, userMessage);
+		var userMessage = new WebsocketIncomingPayload(
+				session.getId(),
+				Objects.nonNull(session.getPrincipal()) ? session.getPrincipal().getName() : null,
+				message.getPayload());
+		var incomingPayload = objectMapper.readValue(message.getPayload(), Message.class);
+
+		if("ALL".equals(incomingPayload.to())) {
+			//To all users
+			broadcastToAll(session, incomingPayload);
+		} else {
+			//To a specific user
+			var outgoingPayload = objectMapper.writeValueAsString(new WebsocketOutgoingPayload(incomingPayload.from(), incomingPayload.to(), incomingPayload.message()));
+			sessions.get(incomingPayload.to()).sendMessage(new TextMessage(outgoingPayload));
+		}
 
 	}
 
@@ -88,8 +106,13 @@ class TextMessageHandler extends TextWebSocketHandler {
 	@SneakyThrows
 	public void afterConnectionEstablished(WebSocketSession session) {
 		log.info("Session established: session: {}, Principal: {}, attributes: {}", session, session.getPrincipal(), session.getAttributes());
+		//Todo can we have the principle as the key for a session?
 		sessions.put(session.getId(), session);
-		broadcast(session, new UserMessage("SYSTEM", "User %s Connected".formatted(session.getId())));
+
+		broadcastToAll(session, new Message("SYSTEM", "ALL", "User %s Connected".formatted(session.getId())));
+		//TODO broadcast to the same user that and tell them their session id
+		var outgoingPayload = objectMapper.writeValueAsString(new WebsocketOutgoingPayload(session.getId(), session.getId(), "Your id %s".formatted(session.getId())));
+		session.sendMessage(new TextMessage(outgoingPayload));
 	}
 
 	@Override
@@ -97,19 +120,17 @@ class TextMessageHandler extends TextWebSocketHandler {
 	public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
 		log.info("Session closed: session: {}, Principal: {}, attributes: {}", session, session.getPrincipal(), session.getAttributes());
 		sessions.remove(session.getId());
-		broadcast(session, new UserMessage("SYSTEM", "User %s Disconnected".formatted(session.getId())));
+		broadcastToAll(session, new Message("SYSTEM", "ALL", "User %s Disconnected".formatted(session.getId())));
 	}
 
 	@SneakyThrows
-	void broadcast(WebSocketSession session, UserMessage message) {
-		var outgoingMessage = objectMapper.writeValueAsString(
-				new Message(message.id(), "ALL", message.message())
-		);
+	void broadcastToAll(WebSocketSession session, Message message) {
+		var outgoingPayload = objectMapper.writeValueAsString(new WebsocketOutgoingPayload(message.from(), message.to(), message.message()));
 		//send to all the users
 		sessions.values().forEach(s -> {
 			try {
 				//if (session == s) return;
-				s.sendMessage(new TextMessage(outgoingMessage));
+				s.sendMessage(new TextMessage(outgoingPayload));
 			} catch (Exception e) {
 				log.error("Error sending message to session: {}", s, e);
 			}
