@@ -7,6 +7,9 @@ This is a simple example of how to deal with websocket with spring boot.
 
 [Websocket with Spring Boot WebFlux](https://docs.spring.io/spring-framework/reference/web-reactive.html)
 
+[sock.js](https://github.com/sockjs/sockjs-client)
+
+
 ## WebSocket
 - WebSocket is a communication protocol that provides a full-duplex channel over a single, long-lived TCP connection. 
 - It allows a client (typically a web browser) and a server to exchange messages in real time with minimal overhead, making it ideal for interactive applications like chat apps, live notifications, gaming, and financial data feeds.

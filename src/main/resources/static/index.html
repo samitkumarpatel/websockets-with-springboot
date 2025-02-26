@@ -61,7 +61,7 @@
 </head>
 <body>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
     <div id="app">
         <h2>{{ title }}</h2>
         <p>Welcome <u>{{me}}</u></p>
@@ -123,22 +123,15 @@
                 }
 
                 onMounted(() => {
-                    // Create WebSocket connection.
-                    socket.value = new WebSocket(`ws://localhost:8080/text?name=${crypto.randomUUID()}`,[]);
-
-
-                    // Connection opened
-                    socket.value.addEventListener("open", (event) => {
-                        //socket.value.send("Hello from client!");
+                    socket.value = new SockJS(`${apiHost}/text?name=${crypto.randomUUID()}`);
+                    socket.value.onopen = function() {
+                        console.log('open');
                         fetchUsers()
-                    });
+                    };
 
-                    // Listen for messages
-                    socket.value.addEventListener("message", (event) => {
+                    socket.value.onmessage = function(event) {
                         let data = JSON.parse(event.data)
                         console.log("Message from server ", data);
-
-
                         if(data.from === 'SYSTEM') {
                             fetchUsers()
                             messages.value.push(data)
@@ -147,7 +140,11 @@
                         } else {
                             messages.value.push(data)
                         }
-                    });
+                    };
+
+                    socket.value.onclose = function() {
+                        console.log('close');
+                    };
                 })
                 return {
                     title, messages, sendMessage, message, users, messageTo, me

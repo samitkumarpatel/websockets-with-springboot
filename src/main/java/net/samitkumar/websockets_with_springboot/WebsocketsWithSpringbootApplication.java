@@ -46,7 +46,6 @@ public class WebsocketsWithSpringbootApplication {
 
 }
 
-record WebsocketIncomingPayload(String sessionId, String uuid, String message) {}
 record Message(String from, String to, String message) {}
 record WebsocketOutgoingPayload(String from, String to, String message) {}
 
@@ -161,7 +160,7 @@ class WebSocketConfiguration implements WebSocketConfigurer {
 						return new UserPrincipal(uuid);
 					}
 				})
-				//.withSockJS()
+				.withSockJS()
 		;
 	}
 }
