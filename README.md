@@ -1,9 +1,14 @@
-[main branch]
-[sockjs branch]
-[stomp branch]
 
 # websocket-with-springboot
 This is a simple example of how to deal with websocket with spring boot.
+
+There are various Implementation can be found in this repo in a different branch:
+- [main branch](https://github.com/samitkumarpatel/websockets-with-springboot/tree/main) - has the implementation of Simple WebSocket connected to a SPA.
+
+- [sockjs branch](https://github.com/samitkumarpatel/websockets-with-springboot/tree/sockjs) - has the implementation of Simple WebSocket with SockJs fallback connected to a SPA.
+
+- [stomp branch](https://github.com/samitkumarpatel/websockets-with-springboot/tree/stomp) - has the implementation of STOMP over WebSocket connected to a SPA.
+
 
 
 ### Documentation
