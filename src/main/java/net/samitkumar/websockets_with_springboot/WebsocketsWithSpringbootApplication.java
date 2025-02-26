@@ -82,10 +82,6 @@ class TextMessageHandler extends TextWebSocketHandler {
 	@SneakyThrows
 	protected void handleTextMessage(WebSocketSession session, TextMessage message) {
 		log.info("Received message: SESSION:{} , MESSAGE: {}, PRINCIPAL: {}, ATTRIBUTES: {}", session, message.getPayload(), session.getPrincipal(), session.getAttributes());
-		var userMessage = new WebsocketIncomingPayload(
-				session.getId(),
-				Objects.nonNull(session.getPrincipal()) ? session.getPrincipal().getName() : null,
-				message.getPayload());
 		var incomingPayload = objectMapper.readValue(message.getPayload(), Message.class);
 
 		if("ALL".equals(incomingPayload.to())) {
@@ -94,7 +90,9 @@ class TextMessageHandler extends TextWebSocketHandler {
 		} else {
 			//To a specific user
 			var outgoingPayload = objectMapper.writeValueAsString(new WebsocketOutgoingPayload(incomingPayload.from(), incomingPayload.to(), incomingPayload.message()));
+			//send message to both to and from users
 			sessions.get(incomingPayload.to()).sendMessage(new TextMessage(outgoingPayload));
+			sessions.get(incomingPayload.from()).sendMessage(new TextMessage(outgoingPayload));
 		}
 
 	}
@@ -103,7 +101,7 @@ class TextMessageHandler extends TextWebSocketHandler {
 	@SneakyThrows
 	public void afterConnectionEstablished(WebSocketSession session) {
 		log.info("Session established: session: {}, Principal: {}, attributes: {}", session, session.getPrincipal(), session.getAttributes());
-		//Todo can we have the principle as the key for a session?
+		//TODO can we have the principle as the key for a session?
 		sessions.put(session.getId(), session);
 
 		broadcastToAll(session, new Message("SYSTEM", "ALL", "User %s Connected".formatted(session.getId())));
